@@ -1,4 +1,4 @@
-# Terminal Emulator
+# Unix Shell
 A system application for executing commands on the unix shell.
 
 ## Screenshot
