@@ -23,6 +23,7 @@ func main() {
 		currUser      string
 		currHost      string
 	)
+
 	_ = cmdContext
 	_ = inputCmd
 
@@ -32,13 +33,17 @@ func main() {
 		currHost = os.Getenv("HOSTNAME")
 
 		fmt.Printf(prompt, currUser, currHost, cmdCurDirr)
-
 		reader := bufio.NewReader(os.Stdin)
 		inputCmd, err := reader.ReadString('\n')
 
 		if err != nil {
 			fmt.Println(err)
 			continue
+		}
+
+		if inputCmd == "exit\n" {
+			fmt.Println("Bye!")
+			os.Exit(0)
 		}
 
 		inputArr = strings.Fields(inputCmd)
