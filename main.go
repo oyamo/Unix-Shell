@@ -16,6 +16,7 @@ func main() {
 
 	var (
 		inputArr      []string
+		multiCommands [][]string
 		inputCmd      string
 		parentContext context.Context
 		cmdContext    context.Context
@@ -28,7 +29,11 @@ func main() {
 	_ = inputCmd
 
 	for {
-		cmdCurDirr = os.Getenv("PWD")
+		var err error
+		cmdCurDirr, err = os.Getwd()
+		if err != nil {
+			panic(err)
+		}
 		currUser = os.Getenv("USER")
 		currHost = os.Getenv("HOSTNAME")
 
@@ -46,43 +51,106 @@ func main() {
 			os.Exit(0)
 		}
 
-		inputArr = strings.Fields(inputCmd)
-
-		// create a context that
-		parentContext = context.Background()
-		cmdContext, cancelCmdCtx := context.WithCancel(parentContext)
-
-		// Create a new subprocess
-		subProcess := exec.CommandContext(cmdContext, inputArr[0], inputArr[1:]...)
-
-		// Set dir
-		subProcess.Dir = cmdCurDirr
-
-		// Create
-		stdIn, err := subProcess.StdinPipe()
-
-		// check runtime error
-		if err != nil {
-			fmt.Println(err)
+		// if there is no input, continue
+		if inputCmd == "\n" {
 			continue
 		}
 
-		subProcess.Stdin = os.Stdin
-		subProcess.Stdout = os.Stdout
-		subProcess.Stderr = os.Stderr
+		multiCommands = make([][]string, 0)
 
-		// Start the process
-		if err = subProcess.Start(); err != nil {
-			continue
+		// detect if there is a multi command
+		if strings.Contains(inputCmd, ";") {
+			inputArr = strings.Split(inputCmd, ";")
+			for _, cmd := range inputArr {
+				multiCommands = append(multiCommands, strings.Fields(cmd))
+			}
+		} else {
+			multiCommands = append(multiCommands, strings.Fields(inputCmd))
 		}
 
-		err = subProcess.Wait()
-		if err != nil {
-			fmt.Println(err)
-			continue
+		for _, v := range multiCommands {
+			// detect variable assignment
+			var (
+				subCmd []string = v
+			)
+
+			if strings.Contains(subCmd[0], "=") {
+				variable := strings.Split(v[0], "=")
+				os.Setenv(variable[0], variable[1])
+				continue
+			}
+
+			// detect variables and replace them
+			for i, v := range v {
+				if strings.HasPrefix(v, "$") {
+					subCmd[i] = os.Getenv(v[1:])
+				}
+			}
+
+			// if there is no input, continue
+			if len(v) == 0 {
+				continue
+			}
+
+			if v[0] == "cd" {
+				if len(subCmd) == 1 {
+					os.Chdir(os.Getenv("HOME"))
+					continue
+				}
+
+				err := os.Chdir(subCmd[1])
+				if err != nil {
+					fmt.Println(err)
+					continue
+				}
+			}
+
+			// detect if there is a pipe
+			if strings.Contains(inputCmd, "|") {
+
+			}
+
+			// create a context that
+			parentContext = context.Background()
+			cmdContext, cancelCmdCtx := context.WithCancel(parentContext)
+
+			// Create a new subprocess
+			subProcess := exec.CommandContext(cmdContext, subCmd[0], subCmd[1:]...)
+
+			// Set dir
+			subProcess.Dir = cmdCurDirr
+
+			// Create
+			stdIn, err := subProcess.StdinPipe()
+
+			// check runtime error
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				continue
+			}
+
+			subProcess.Stdin = os.Stdin
+			subProcess.Stdout = os.Stdout
+			subProcess.Stderr = os.Stderr
+
+			// Start the process
+			if err = subProcess.Start(); err != nil {
+				errStr := err.Error()
+				errStr = strings.Replace(errStr, "exec: ", "osh: ", 1)
+				// write to os.Stderr
+				fmt.Fprintln(os.Stderr, errStr)
+				continue
+			}
+
+			err = subProcess.Wait()
+			if err != nil {
+				// write to os.Stderr
+				fmt.Fprintln(os.Stderr, err)
+				continue
+			}
+			cancelCmdCtx()
+			stdIn.Close()
 		}
-		cancelCmdCtx()
-		stdIn.Close()
 	}
 
 }
